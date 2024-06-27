@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_TARGET,
     CONF_ALIAS,
+    CONF_UNIQUE_ID,
     EVENT_HOMEASSISTANT_STARTED,
     Platform,
 )
@@ -41,7 +42,7 @@ def async_trigger_discovery(
             hass,
             DOMAIN,
             context={"source": config_entries.SOURCE_INTEGRATION_DISCOVERY},
-            data={CONF_TARGET: device.light_entity_id, CONF_ALIAS: device.name},
+            data={CONF_TARGET: device.light_entity_id},
         )
 
 

@@ -12,7 +12,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
 )
 from homeassistant.helpers.typing import DiscoveryInfoType
-from homeassistant.const import CONF_TARGET, CONF_ALIAS, CONF_NAME
+from homeassistant.const import CONF_TARGET, CONF_ALIAS, CONF_UNIQUE_ID
 
 from .const import DOMAIN
 from .light import Superlight
@@ -22,34 +22,35 @@ class SuperlightConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Superlight."""
 
     VERSION = 1
-    MINOR_VERSION = 1
 
-    def __init__(self):
-        self._discovered_alias = None
-        self._discovered_id = None
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self._discovered_device: Superlight | None = None
 
-    async def async_step_discovered_light(
+    async def async_step_discovery_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Confirm discovery."""
         if user_input is not None:
-            self.async_create_entry(
-                title=self._discovered_alias,
-                data={CONF_TARGET: self._discovered_id},
+            return self.async_create_entry(
+                title=self._discovered_device.name,
+                data={CONF_TARGET: self._discovered_device.light_entity_id},
             )
 
-        placeholders = {
-            "label": self._discovered_alias,
-            # "group": discovered.group,
-        }
+        self._set_confirm_only()
+        placeholders = {"name": self._discovered_device.name}
         self.context["title_placeholders"] = placeholders
         return self.async_show_form(
-            step_id="discovered_light",
+            step_id="discovery_confirm",
             description_placeholders=placeholders,
         )
 
     async def async_step_integration_discovery(
         self, discovery_info: DiscoveryInfoType
     ) -> ConfigFlowResult:
-        self._discovered_alias = discovery_info[CONF_ALIAS]
-        self._discovered_id = discovery_info[CONF_TARGET]
-        return await self.async_step_discovered_light()
+        """Handle automatic discovery."""
+        self._discovered_device = Superlight(self.hass, discovery_info[CONF_TARGET])
+        await self.async_set_unique_id(
+            self._discovered_device.unique_id, raise_on_progress=False
+        )
+        return await self.async_step_discovery_confirm()
