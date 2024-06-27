@@ -109,22 +109,18 @@ class Superlight(LightEntity):
             return
 
         self._attr_available = True
-        self._attr_color_mode = state.attributes[ATTR_COLOR_MODE]
         self._attr_is_on = state.state == STATE_ON
-        self._attr_brightness = state.attributes[ATTR_BRIGHTNESS]
-        self._attr_hs_color = state.attributes[ATTR_HS_COLOR]
-        self._attr_xy_color = state.attributes[ATTR_XY_COLOR]
-        self._attr_rgb_color = state.attributes[ATTR_RGB_COLOR]
-        self._attr_rgbw_color = state.attributes[ATTR_RGBW_COLOR]
-
-        if ATTR_RGBWW_COLOR in state.attributes:
-            self._attr_rgbww_color = state.attributes[ATTR_RGBWW_COLOR]
-
-        if ATTR_COLOR_TEMP in state.attributes:
-            self._attr_color_temp = state.attributes[ATTR_COLOR_TEMP]
+        self._attr_color_mode = state.attributes.get(ATTR_COLOR_MODE)
+        self._attr_brightness = state.attributes.get(ATTR_BRIGHTNESS)
+        self._attr_hs_color = state.attributes.get(ATTR_HS_COLOR)
+        self._attr_xy_color = state.attributes.get(ATTR_XY_COLOR)
+        self._attr_rgb_color = state.attributes.get(ATTR_RGB_COLOR)
+        self._attr_rgbw_color = state.attributes.get(ATTR_RGBW_COLOR)
+        self._attr_rgbww_color = state.attributes.get(ATTR_RGBWW_COLOR)
+        self._attr_color_temp = state.attributes.get(ATTR_COLOR_TEMP)
 
     async def async_added_to_hass(self) -> None:
-        """Register callbacks and copy the wrapped entity's custom name if set."""
+        """Register callbacks."""
 
         @callback
         def _async_state_changed_listener(
