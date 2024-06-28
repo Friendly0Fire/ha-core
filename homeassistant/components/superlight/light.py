@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 import logging
-from typing import Any
+from typing import Any, Mapping
+import voluptuous as vol
+import heapq
+from dataclasses import dataclass, field
 
 from homeassistant import config_entries
 from homeassistant.components.light import (
@@ -17,29 +21,65 @@ from homeassistant.components.light import (
     ATTR_XY_COLOR,
     ColorMode,
     LightEntity,
+    LIGHT_TURN_ON_SCHEMA,
 )
-from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.core import (
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    callback,
+    Context,
+)
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.const import (
+    ATTR_DOMAIN,
+    ATTR_ID,
     ATTR_ENTITY_ID,
+    ATTR_SERVICE,
     ATTR_SERVICE_DATA,
     CONF_TARGET,
+    EVENT_CALL_SERVICE,
+    EVENT_STATE_CHANGED,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
     STATE_ON,
     STATE_UNAVAILABLE,
 )
 from homeassistant.helpers.event import async_track_state_change_event
-from .const import DOMAIN
+from .const import DOMAIN, SERVICE_SUPERLIGHT_PUSH_STATE, ATTR_PRIORITY
+import contextlib
 
 _LOGGER = logging.getLogger(__name__)
+
+SUPERLIGHT_PUSH_STATE_SCHEMA = {
+    **LIGHT_TURN_ON_SCHEMA,
+    ATTR_PRIORITY: vol.Coerce(int),
+    ATTR_ID: vol.Coerce(str),
+}
+
+
+@dataclass(order=True)
+class PrioritizedState:
+    priority: int
+    id: str = field(compare=False)
+    state: str = field(compare=False)
+    attributes: Mapping[str, Any] = field(compare=False)
+
+    def __eq__(self, value: PrioritizedState) -> bool:
+        return self.id == value.id
+
+
+MAX_PRIORITY: int = sys.maxsize
+MANUAL_ID: str = "__manual"
 
 
 class Superlight(LightEntity):
     light_entity_id: str
+    states: list[PrioritizedState]
 
     def __init__(self, hass: HomeAssistant, underlying_id: str) -> None:
         """Initialize Superlight."""
@@ -79,6 +119,7 @@ class Superlight(LightEntity):
         self._is_new_entity = (
             registry.async_get_entity_id(LIGHT_DOMAIN, DOMAIN, unique_id) is None
         )
+        self.states = []
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn device on."""
@@ -86,7 +127,11 @@ class Superlight(LightEntity):
             LIGHT_DOMAIN,
             SERVICE_TURN_ON,
             {ATTR_ENTITY_ID: self.light_entity_id, **kwargs},
+            context=Context(parent_id=self.unique_id),
         )
+
+    async def push_state(self, **kwargs: Any) -> None:
+        pass
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn device off."""
@@ -118,6 +163,33 @@ class Superlight(LightEntity):
         self._attr_rgbw_color = state.attributes.get(ATTR_RGBW_COLOR)
         self._attr_rgbww_color = state.attributes.get(ATTR_RGBWW_COLOR)
         self._attr_color_temp = state.attributes.get(ATTR_COLOR_TEMP)
+
+        # Skip events spawned by this Superlight
+        orgevt = event.context.origin_event
+        if (
+            orgevt.event_type == EVENT_CALL_SERVICE
+            and orgevt.data.get(ATTR_DOMAIN) == LIGHT_DOMAIN
+            and orgevt.data.get(ATTR_SERVICE) == SERVICE_TURN_ON
+        ):
+            if orgevt.context.parent_id == self.unique_id:
+                return
+
+        # Skip events not caused by a light domain service call
+        if (
+            orgevt.event_type != EVENT_CALL_SERVICE
+            or orgevt.data.get(ATTR_DOMAIN) != LIGHT_DOMAIN
+        ):
+            return
+
+        self._add_state(
+            PrioritizedState(MAX_PRIORITY, MANUAL_ID, state.state, state.attributes)
+        )
+
+    def _add_state(self, state: PrioritizedState):
+        with contextlib.suppress(ValueError):
+            self.states.remove(state)
+        self.states.append(state)
+        self.states.sort(reverse=True)
 
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
@@ -151,6 +223,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Superlight from a config entry."""
+
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_SUPERLIGHT_PUSH_STATE,
+        SUPERLIGHT_PUSH_STATE_SCHEMA,
+        "push_state",
+    )
 
     entity = Superlight(hass, entry.data[CONF_TARGET])
     async_add_entities([entity])
