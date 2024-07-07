@@ -2,6 +2,6 @@
     "domain": "superlight",
     "name": "Superlight",
     "config_flow": true,
-    "integration_type": "helper",
+    "iot_class": "local_push",
     "version": "0.1.0"
 }
