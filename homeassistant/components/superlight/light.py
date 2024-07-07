@@ -41,7 +41,6 @@ from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_SERVICE,
     ATTR_SERVICE_DATA,
-    CONF_TARGET,
     EVENT_CALL_SERVICE,
     EVENT_STATE_CHANGED,
     SERVICE_TURN_OFF,
@@ -94,7 +93,12 @@ class Superlight(LightEntity):
 
         name = None
         if wrapped_light:
-            name = wrapped_light.original_name + "+"
+            if wrapped_light.original_name:
+                name = wrapped_light.original_name + "+"
+            elif wrapped_light.name:
+                name = wrapped_light.name + "+"
+            else:
+                name = f"<{underlying_id}>+"
 
         self._device_id = f"{device_id}_superlight"
         if device_id and (device := device_registry.async_get(device_id)):
@@ -219,10 +223,15 @@ class Superlight(LightEntity):
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: config_entries.ConfigEntry,
+    config_entry: config_entries.ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Superlight from a config entry."""
+
+    registry = er.async_get(hass)
+    entity_id = er.async_validate_entity_id(
+        registry, config_entry.options[CONF_ENTITY_ID]
+    )
 
     platform = entity_platform.async_get_current_platform()
     platform.async_register_entity_service(
@@ -231,5 +240,5 @@ async def async_setup_entry(
         "push_state",
     )
 
-    entity = Superlight(hass, entry.data[CONF_TARGET])
+    entity = Superlight(hass, entity_id)
     async_add_entities([entity])
