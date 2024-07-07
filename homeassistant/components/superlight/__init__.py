@@ -83,11 +83,12 @@ async def async_discover_devices(
     ereg = er.async_get(hass)
 
     async def _async_get_superlight_id(entity: er.RegistryEntry) -> str | None:
-        if not entity.unique_id:
+        if not entity.entity_id:
             return None
-        return ereg.async_get_entity_id(
-            LIGHT_DOMAIN, DOMAIN, f"{entity.unique_id}_superlight"
-        )
+        superlight_entry = ereg.async_get(entity.entity_id)
+        if superlight_entry is None or superlight_entry.domain != DOMAIN:
+            return None
+        return superlight_entry.entity_id
 
     if entity_id is not None:
         entity = ereg.async_get(entity_id)

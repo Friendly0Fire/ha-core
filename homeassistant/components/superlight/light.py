@@ -100,7 +100,7 @@ class Superlight(LightEntity):
         if wrapped_light:
             name = wrapped_light.original_name
 
-        self._device_id = f"{device_id}_superlight"
+        self._device_id = device_id
         if device_id and (device := device_registry.async_get(device_id)):
             self._attr_device_info = DeviceInfo(
                 connections=device.connections,
@@ -110,6 +110,12 @@ class Superlight(LightEntity):
         self._attr_has_entity_name = has_entity_name
         self._attr_name = name
         self._attr_unique_id = unique_id
+        self._light_entity_id = underlying_entity_id
+        self._is_new_entity = (
+            registry.async_get_entity_id(LIGHT_DOMAIN, DOMAIN, unique_id) is None
+        )
+        self.entity_id = f"{underlying_entity_id}_superlight"
+
         self._attr_supported_color_modes = (
             wrapped_light.capabilities["supported_color_modes"]
             if wrapped_light
@@ -118,11 +124,7 @@ class Superlight(LightEntity):
         self._attr_supported_features = (
             wrapped_light.supported_features if wrapped_light else 0
         )
-        self._light_entity_id = underlying_entity_id
 
-        self._is_new_entity = (
-            registry.async_get_entity_id(LIGHT_DOMAIN, DOMAIN, unique_id) is None
-        )
         self.states = []
 
     def _make_context(self):
