@@ -59,6 +59,11 @@ push_state:
       default: true
       selector:
         boolean: null
+    unlatch:
+      required: false
+      default: false
+      selector:
+        boolean: null
     transition: &transition
       filter:
         supported_features:
