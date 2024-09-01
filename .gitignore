@@ -138,3 +138,4 @@ tmp_cache
 pytest_buckets.txt
 
 custom_components/variable
+custom_components/hacs
