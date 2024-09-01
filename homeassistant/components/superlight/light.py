@@ -6,7 +6,6 @@ import sys
 import logging
 from typing import Any, Mapping
 import voluptuous as vol
-import heapq
 from dataclasses import dataclass, field
 
 from homeassistant.components.homeassistant import exposed_entities
@@ -121,8 +120,32 @@ class Superlight(LightEntity):
             if wrapped_light
             else None
         )
-        self._attr_supported_features = (
-            wrapped_light.supported_features if wrapped_light else 0
+
+        if "color_temp" in self._attr_supported_color_modes:
+            self._attr_min_color_temp_kelvin = (
+                wrapped_light.capabilities["min_color_temp_kelvin"]
+                if wrapped_light
+                else None
+            )
+
+            self._attr_max_color_temp_kelvin = (
+                wrapped_light.capabilities["max_color_temp_kelvin"]
+                if wrapped_light
+                else None
+            )
+
+            self._attr_min_mireds = (
+                wrapped_light.capabilities["min_mireds"] if wrapped_light else None
+            )
+
+            self._attr_max_mireds = (
+                wrapped_light.capabilities["max_mireds"] if wrapped_light else None
+            )
+
+        self._attr_effect_list = (
+            wrapped_light.capabilities["effect_list"]
+            if wrapped_light and "effect_list" in wrapped_light.capabilities
+            else None
         )
 
         self.states = []
@@ -133,6 +156,9 @@ class Superlight(LightEntity):
         return context
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        if "color_temp" in kwargs and "color_temp_kelvin" in kwargs:
+            del kwargs["color_temp_kelvin"]
+
         """Turn device on."""
         await self.hass.services.async_call(
             LIGHT_DOMAIN,
