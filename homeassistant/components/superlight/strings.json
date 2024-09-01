@@ -11,6 +11,16 @@
         }
     },
     "services": {
+        "pop_state": {
+            "name": "Pop State",
+            "description": "Pops an existing light state (color, brightness, etc.) using a given id.",
+            "fields": {
+                "id": {
+                    "name": "ID",
+                    "description": "Unique state identifier. Set in a prior call to push_state."
+                }
+            }
+        },
         "push_state": {
             "name": "Push State",
             "description": "Pushes a new light state (color, brightness, etc.) with a given priority.",
@@ -22,6 +32,10 @@
                 "id": {
                     "name": "ID",
                     "description": "Unique state identifier. Used to modify/remove a state from a Superlight."
+                },
+                "turn_on": {
+                    "name": "Turn on",
+                    "description": "Whether to turn the light on or off in this state."
                 },
                 "transition": {
                     "name": "[%key:component::light::common::field_transition_name%]",

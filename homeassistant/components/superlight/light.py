@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import sys
 import logging
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 import voluptuous as vol
 from dataclasses import dataclass, field
+from sortedcontainers import SortedSet
+import funcy
 
 from homeassistant.components.homeassistant import exposed_entities
 from homeassistant import config_entries
@@ -14,10 +17,15 @@ from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
     ATTR_COLOR_TEMP,
+    ATTR_COLOR_TEMP_KELVIN,
+    ATTR_EFFECT_LIST,
     ATTR_HS_COLOR,
+    ATTR_MIN_COLOR_TEMP_KELVIN,
+    ATTR_MAX_COLOR_TEMP_KELVIN,
     ATTR_RGB_COLOR,
     ATTR_RGBW_COLOR,
     ATTR_RGBWW_COLOR,
+    ATTR_SUPPORTED_COLOR_MODES,
     ATTR_XY_COLOR,
     ColorMode,
     LightEntity,
@@ -50,8 +58,7 @@ from homeassistant.const import (
     CONF_ENTITY_ID,
 )
 from homeassistant.helpers.event import async_track_state_change_event
-from .const import DOMAIN, SERVICE_SUPERLIGHT_PUSH_STATE, ATTR_PRIORITY
-import contextlib
+from .const import DOMAIN, SERVICE_SUPERLIGHT_PUSH_STATE, ATTR_PRIORITY, ATTR_TURN_ON
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,6 +66,7 @@ SUPERLIGHT_PUSH_STATE_SCHEMA = {
     **LIGHT_TURN_ON_SCHEMA,
     ATTR_PRIORITY: vol.Coerce(int),
     ATTR_ID: vol.Coerce(str),
+    ATTR_TURN_ON: vol.Coerce(bool),
 }
 
 
@@ -66,11 +74,29 @@ SUPERLIGHT_PUSH_STATE_SCHEMA = {
 class PrioritizedState:
     priority: int
     id: str = field(compare=False)
-    state: str = field(compare=False)
+    state: bool = field(compare=False)
     attributes: Mapping[str, Any] = field(compare=False)
+
+    def __init__(
+        self,
+        attributes: Mapping[str, Any],
+        state: str | bool | None = None,
+        priority: int | None = None,
+        id: str | None = None,
+    ):
+        self.priority = priority if priority is not None else attributes[ATTR_PRIORITY]
+        self.id = id if id is not None else attributes[ATTR_ID]
+        if state is not None:
+            self.state = state == "on" or state
+        else:
+            self.state = attributes[ATTR_TURN_ON] or attributes[ATTR_TURN_ON] == "on"
+        self.attributes = funcy.omit(attributes, [ATTR_PRIORITY, ATTR_ID])
 
     def __eq__(self, value: PrioritizedState) -> bool:
         return self.id == value.id
+
+    def __hash__(self) -> int:
+        return self.id.__hash__()
 
 
 MAX_PRIORITY: int = sys.maxsize
@@ -78,7 +104,7 @@ MANUAL_ID: str = "__manual"
 
 
 class Superlight(LightEntity):
-    states: list[PrioritizedState]
+    states: SortedSet
 
     def __init__(
         self,
@@ -116,71 +142,92 @@ class Superlight(LightEntity):
         self.entity_id = f"{underlying_entity_id}_superlight"
 
         self._attr_supported_color_modes = (
-            wrapped_light.capabilities["supported_color_modes"]
+            wrapped_light.capabilities[ATTR_SUPPORTED_COLOR_MODES]
             if wrapped_light
             else None
         )
 
-        if "color_temp" in self._attr_supported_color_modes:
+        if ColorMode.COLOR_TEMP in self._attr_supported_color_modes:
             self._attr_min_color_temp_kelvin = (
-                wrapped_light.capabilities["min_color_temp_kelvin"]
+                wrapped_light.capabilities[ATTR_MIN_COLOR_TEMP_KELVIN]
                 if wrapped_light
                 else None
             )
 
             self._attr_max_color_temp_kelvin = (
-                wrapped_light.capabilities["max_color_temp_kelvin"]
+                wrapped_light.capabilities[ATTR_MAX_COLOR_TEMP_KELVIN]
                 if wrapped_light
                 else None
             )
 
-            self._attr_min_mireds = (
-                wrapped_light.capabilities["min_mireds"] if wrapped_light else None
-            )
-
-            self._attr_max_mireds = (
-                wrapped_light.capabilities["max_mireds"] if wrapped_light else None
-            )
-
         self._attr_effect_list = (
-            wrapped_light.capabilities["effect_list"]
-            if wrapped_light and "effect_list" in wrapped_light.capabilities
+            wrapped_light.capabilities[ATTR_EFFECT_LIST]
+            if wrapped_light and ATTR_EFFECT_LIST in wrapped_light.capabilities
             else None
         )
 
-        self.states = []
+        self.states = SortedSet()
 
     def _make_context(self):
         context = Context(self._context.user_id, self.unique_id, self._context.id)
         context.origin_event = self._context.origin_event
         return context
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        if "color_temp" in kwargs and "color_temp_kelvin" in kwargs:
-            del kwargs["color_temp_kelvin"]
+    async def _apply_state(self):
+        state: PrioritizedState = self.states[0]
+        if state.state:
+            await self.hass.services.async_call(
+                LIGHT_DOMAIN,
+                SERVICE_TURN_ON,
+                {ATTR_ENTITY_ID: self._light_entity_id, **state.attributes},
+                blocking=True,
+                context=self._make_context(),
+            )
+        else:
+            await self.hass.services.async_call(
+                LIGHT_DOMAIN,
+                SERVICE_TURN_OFF,
+                {ATTR_ENTITY_ID: self._light_entity_id},
+                blocking=True,
+                context=self._make_context(),
+            )
 
+    async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn device on."""
-        await self.hass.services.async_call(
-            LIGHT_DOMAIN,
-            SERVICE_TURN_ON,
-            {ATTR_ENTITY_ID: self._light_entity_id, **kwargs},
-            blocking=True,
-            context=self._make_context(),
-            # context=Context(parent_id=self.unique_id),
+
+        if ATTR_COLOR_TEMP in kwargs and ATTR_COLOR_TEMP_KELVIN in kwargs:
+            del kwargs[ATTR_COLOR_TEMP]
+
+        self._add_state(
+            PrioritizedState(kwargs, state=True, priority=MAX_PRIORITY, id=MANUAL_ID)
         )
 
+        # await self.hass.services.async_call(
+        #    LIGHT_DOMAIN,
+        #    SERVICE_TURN_ON,
+        #    {ATTR_ENTITY_ID: self._light_entity_id, **kwargs},
+        #    blocking=True,
+        #    context=self._make_context(),
+        # )
+
     async def push_state(self, **kwargs: Any) -> None:
-        pass
+        self._add_state(PrioritizedState(kwargs))
+
+    async def pop_state(self, **kwargs: Any) -> None:
+        self._remove_state(kwargs["id"])
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn device off."""
-        await self.hass.services.async_call(
-            LIGHT_DOMAIN,
-            SERVICE_TURN_OFF,
-            {ATTR_ENTITY_ID: self._light_entity_id, **kwargs},
-            blocking=True,
-            context=self._make_context(),
+        self._add_state(
+            PrioritizedState({}, state=False, priority=MAX_PRIORITY, id=MANUAL_ID)
         )
+        # await self.hass.services.async_call(
+        #    LIGHT_DOMAIN,
+        #    SERVICE_TURN_OFF,
+        #    {ATTR_ENTITY_ID: self._light_entity_id, **kwargs},
+        #    blocking=True,
+        #    context=self._make_context(),
+        # )
 
     @callback
     def async_state_changed_listener(
@@ -227,14 +274,21 @@ class Superlight(LightEntity):
                 return
 
         self._add_state(
-            PrioritizedState(MAX_PRIORITY, MANUAL_ID, state.state, state.attributes)
+            PrioritizedState(
+                state.attributes,
+                state=state.state == STATE_ON,
+                priority=MAX_PRIORITY,
+                id=MANUAL_ID,
+            )
         )
 
     def _add_state(self, state: PrioritizedState):
-        with contextlib.suppress(ValueError):
-            self.states.remove(state)
         self.states.append(state)
-        self.states.sort(reverse=True)
+        self._apply_state()
+
+    def _remove_state(self, id: str):
+        self.states.discard(PrioritizedState({}, id=id))
+        self._apply_state()
 
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""

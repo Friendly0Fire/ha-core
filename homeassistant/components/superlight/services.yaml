@@ -29,6 +29,17 @@
       - light.ColorMode.RGBW
       - light.ColorMode.RGBWW
 
+pop_state:
+  target:
+    entity:
+      integration: superlight
+      domain: light
+  fields:
+    id:
+      required: true
+      selector:
+        text:
+
 push_state:
   target:
     entity:
@@ -43,6 +54,11 @@ push_state:
       required: true
       selector:
         text:
+    turn_on:
+      required: true
+      default: true
+      selector:
+        boolean: null
     transition: &transition
       filter:
         supported_features:
@@ -108,20 +124,6 @@ push_state:
       selector:
         number:
           min: 0
-          max: 100
-          unit_of_measurement: "%"
-    brightness_step:
-      filter: *brightness_support
-      advanced: true
-      selector:
-        number:
-          min: -225
-          max: 255
-    brightness_step_pct:
-      filter: *brightness_support
-      selector:
-        number:
-          min: -100
           max: 100
           unit_of_measurement: "%"
     white: &white
