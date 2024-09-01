@@ -2,39 +2,28 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterable
-from typing import Any
-from datetime import timedelta
+import logging
 
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    CONF_ENTITY_ID,
-    CONF_ALIAS,
-    CONF_UNIQUE_ID,
-    EVENT_HOMEASSISTANT_STARTED,
-    Platform,
-)
 from homeassistant.components.homeassistant import exposed_entities
+from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_ENTITY_ID, EVENT_HOMEASSISTANT_STARTED, Platform
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.helpers.entity import Entity
-from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import (
+    device_registry as dr,
     discovery_flow,
     entity_registry as er,
-    device_registry as dr,
 )
-from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.helpers.event import async_track_entity_registry_updated_event
+from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
 
-PLATFORMS = [Platform.LIGHT]
+PLATFORMS = [Platform.LIGHT, Platform.BUTTON]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,13 +95,13 @@ async def async_discover_devices(
 
     devices: Iterable[str] = []
 
-    for entity_id, entity in ereg.entities.items():
+    for eid, entity in ereg.entities.items():
         if entity.domain == LIGHT_DOMAIN and entity.platform != DOMAIN:
-            _LOGGER.debug("Detected light %s", entity_id)
+            _LOGGER.debug("Detected light %s", eid)
             if await _async_get_superlight_id(entity) is None:
-                devices.append(entity_id)
+                devices.append(eid)
             else:
-                _LOGGER.debug("Light %s already has superlight", entity_id)
+                _LOGGER.debug("Light %s already has superlight", eid)
 
     return devices
 
