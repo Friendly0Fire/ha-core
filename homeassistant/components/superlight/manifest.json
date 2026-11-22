@@ -2,5 +2,6 @@
     "domain": "superlight",
     "name": "Superlight",
     "config_flow": true,
+    "integration_type": "helper",
     "version": "0.1.0"
 }
