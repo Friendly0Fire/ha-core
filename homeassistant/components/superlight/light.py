@@ -255,6 +255,7 @@ class Superlight(LightEntity):
             s.id: {
                 "priority": s.priority,
                 "unlatch": s.unlatch,
+                "state": STATE_ON if s.state else STATE_OFF,
                 "attributes": s.attributes,
             }
             for s in self.states
