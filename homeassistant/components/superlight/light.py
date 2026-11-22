@@ -56,6 +56,7 @@ from homeassistant.const import (
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
     STATE_ON,
+    STATE_OFF,
     STATE_UNAVAILABLE,
     CONF_ENTITY_ID,
 )
@@ -211,10 +212,10 @@ class Superlight(LightEntity):
         if len(self.states) > 0:
             state = self.states[-1]
 
-        if state is not None and state.unlatch:
+        if (state is not None) and state.unlatch:
             return
 
-        if state is not None and state.state:
+        if (state is not None) and state.state:
             await self.hass.services.async_call(
                 LIGHT_DOMAIN,
                 SERVICE_TURN_ON,
@@ -261,6 +262,7 @@ class Superlight(LightEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn device off."""
+
         await self._add_state(
             PrioritizedState(self, {}, state=False, priority=MAX_PRIORITY, id=MANUAL_ID)
         )
@@ -297,14 +299,14 @@ class Superlight(LightEntity):
 
         # Skip events spawned by this Superlight
         if (
-            event is not None
-            and event.context is not None
-            and (orgevt := event.context.origin_event) is not None
+            (event is not None)
+            and (event.context is not None)
+            and ((orgevt := event.context.origin_event) is not None)
         ):
             if (
                 orgevt.event_type == EVENT_CALL_SERVICE
                 and orgevt.data.get(ATTR_DOMAIN) == LIGHT_DOMAIN
-                and orgevt.data.get(ATTR_SERVICE) == SERVICE_TURN_ON
+                and orgevt.data.get(ATTR_SERVICE) in [SERVICE_TURN_ON, SERVICE_TURN_OFF]
             ):
                 if orgevt.context.parent_id == self.unique_id:
                     # We can reflect the underlying light state after it's been translated and applied by HA
