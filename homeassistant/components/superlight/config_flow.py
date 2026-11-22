@@ -42,12 +42,15 @@ class SuperlightConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Confirm discovery."""
 
-        title = wrapped_entity_config_entry_title(self.hass, self._discovered_entity_id)
-
         registry = er.async_get(self.hass)
         entity_entry = registry.async_get(self._discovered_entity_id)
         if entity_entry is None:
             raise AbortFlow("underlying_entity_missing")
+
+        await self.async_set_unique_id(entity_entry.unique_id)
+        self._abort_if_unique_id_configured()
+
+        title = wrapped_entity_config_entry_title(self.hass, self._discovered_entity_id)
 
         if user_input is not None:
             if not entity_entry.hidden:
