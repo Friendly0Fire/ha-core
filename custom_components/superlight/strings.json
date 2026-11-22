@@ -1,9 +1,9 @@
 {
     "config": {
-        "flow_title": "{label}",
+        "flow_title": "{name}",
         "step": {
             "discovery_confirm": {
-                "description": "Do you want to set up {label}?"
+                "description": "Do you want to set up {name}?"
             }
         }
     }
