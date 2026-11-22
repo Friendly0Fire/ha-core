@@ -1,115 +1,116 @@
 {
-    "config": {
-        "flow_title": "{name}",
-        "step": {
-            "discovery_confirm": {
-                "description": "Do you want to set up {name}?"
-            }
-        },
-        "abort": {
-            "underlying_entity_missing": "Selected entity no longer exists."
-        }
+  "config": {
+    "abort": {
+      "underlying_entity_missing": "Selected entity no longer exists."
     },
-    "services": {
-        "pop_state": {
-            "name": "Pop State",
-            "description": "Pops an existing light state (color, brightness, etc.) using a given id.",
-            "fields": {
-                "id": {
-                    "name": "ID",
-                    "description": "Unique state identifier. Set in a prior call to push_state."
-                }
-            }
-        },
-        "push_state": {
-            "name": "Push State",
-            "description": "Pushes a new light state (color, brightness, etc.) with a given priority.",
-            "fields": {
-                "priority": {
-                    "name": "Priority",
-                    "description": "Priority of the new state. Higher values are a higher priority. Only the highest priority state in a Superlight will be reflected on the underlying light."
-                },
-                "id": {
-                    "name": "ID",
-                    "description": "Unique state identifier. Used to modify/remove a state from a Superlight."
-                },
-                "turn_on": {
-                    "name": "Turn on",
-                    "description": "Whether to turn the light on or off in this state."
-                },
-                "unlatch": {
-                    "name": "Unlatch",
-                    "description": "This state will allow the underlying light to change states freely and the Superlight will reflect its own state to match. Useful for things like Hue light sync."
-                },
-                "transition": {
-                    "name": "[%key:component::light::common::field_transition_name%]",
-                    "description": "[%key:component::light::common::field_transition_description%]"
-                },
-                "rgb_color": {
-                    "name": "[%key:component::light::common::field_rgb_color_name%]",
-                    "description": "[%key:component::light::common::field_rgb_color_description%]"
-                },
-                "rgbw_color": {
-                    "name": "[%key:component::light::common::field_rgbw_color_name%]",
-                    "description": "[%key:component::light::common::field_rgbw_color_description%]"
-                },
-                "rgbww_color": {
-                    "name": "[%key:component::light::common::field_rgbww_color_name%]",
-                    "description": "[%key:component::light::common::field_rgbww_color_description%]"
-                },
-                "color_name": {
-                    "name": "[%key:component::light::common::field_color_name_name%]",
-                    "description": "[%key:component::light::common::field_color_name_description%]"
-                },
-                "hs_color": {
-                    "name": "[%key:component::light::common::field_hs_color_name%]",
-                    "description": "[%key:component::light::common::field_hs_color_description%]"
-                },
-                "xy_color": {
-                    "name": "[%key:component::light::common::field_xy_color_name%]",
-                    "description": "[%key:component::light::common::field_xy_color_description%]"
-                },
-                "color_temp": {
-                    "name": "[%key:component::light::common::field_color_temp_name%]",
-                    "description": "[%key:component::light::common::field_color_temp_description%]"
-                },
-                "kelvin": {
-                    "name": "[%key:component::light::common::field_kelvin_name%]",
-                    "description": "[%key:component::light::common::field_kelvin_description%]"
-                },
-                "brightness": {
-                    "name": "[%key:component::light::common::field_brightness_name%]",
-                    "description": "[%key:component::light::common::field_brightness_description%]"
-                },
-                "brightness_pct": {
-                    "name": "[%key:component::light::common::field_brightness_pct_name%]",
-                    "description": "[%key:component::light::common::field_brightness_pct_description%]"
-                },
-                "brightness_step": {
-                    "name": "[%key:component::light::common::field_brightness_step_name%]",
-                    "description": "[%key:component::light::common::field_brightness_step_description%]"
-                },
-                "brightness_step_pct": {
-                    "name": "[%key:component::light::common::field_brightness_step_pct_name%]",
-                    "description": "[%key:component::light::common::field_brightness_step_pct_description%]"
-                },
-                "white": {
-                    "name": "[%key:component::light::common::field_white_name%]",
-                    "description": "[%key:component::light::common::field_white_description%]"
-                },
-                "profile": {
-                    "name": "[%key:component::light::common::field_profile_name%]",
-                    "description": "[%key:component::light::common::field_profile_description%]"
-                },
-                "flash": {
-                    "name": "[%key:component::light::common::field_flash_name%]",
-                    "description": "[%key:component::light::common::field_flash_description%]"
-                },
-                "effect": {
-                    "name": "[%key:component::light::common::field_effect_name%]",
-                    "description": "[%key:component::light::common::field_effect_description%]"
-                }
-            }
+    "flow_title": "{name}",
+    "step": {
+      "discovery_confirm": {
+        "description": "Do you want to set up {name}?"
+      },
+      "user": {
+        "data": {
+          "entity_id": "Entity ID"
         }
+      }
     }
+  },
+  "services": {
+    "pop_state": {
+      "description": "Pops an existing light state (color, brightness, etc.) using a given id.",
+      "fields": {
+        "id": {
+          "description": "Unique state identifier. Set in a prior call to push_state.",
+          "name": "ID"
+        }
+      },
+      "name": "Pop State"
+    },
+    "push_state": {
+      "description": "Pushes a new light state (color, brightness, etc.) with a given priority.",
+      "fields": {
+        "brightness": {
+          "description": "[%key:component::light::common::field_brightness_description%]",
+          "name": "[%key:component::light::common::field_brightness_name%]"
+        },
+        "brightness_pct": {
+          "description": "[%key:component::light::common::field_brightness_pct_description%]",
+          "name": "[%key:component::light::common::field_brightness_pct_name%]"
+        },
+        "brightness_step": {
+          "description": "[%key:component::light::common::field_brightness_step_description%]",
+          "name": "[%key:component::light::common::field_brightness_step_name%]"
+        },
+        "brightness_step_pct": {
+          "description": "[%key:component::light::common::field_brightness_step_pct_description%]",
+          "name": "[%key:component::light::common::field_brightness_step_pct_name%]"
+        },
+        "color_name": {
+          "description": "[%key:component::light::common::field_color_name_description%]",
+          "name": "[%key:component::light::common::field_color_name_name%]"
+        },
+        "color_temp_kelvin": {
+          "description": "[%key:component::light::common::field_color_temp_kelvin_description%]",
+          "name": "[%key:component::light::common::field_color_temp_kelvin_name%]"
+        },
+        "effect": {
+          "description": "[%key:component::light::common::field_effect_description%]",
+          "name": "[%key:component::light::common::field_effect_name%]"
+        },
+        "flash": {
+          "description": "[%key:component::light::common::field_flash_description%]",
+          "name": "[%key:component::light::common::field_flash_name%]"
+        },
+        "hs_color": {
+          "description": "[%key:component::light::common::field_hs_color_description%]",
+          "name": "[%key:component::light::common::field_hs_color_name%]"
+        },
+        "id": {
+          "description": "Unique state identifier. Used to modify/remove a state from a Superlight.",
+          "name": "ID"
+        },
+        "priority": {
+          "description": "Priority of the new state. Higher values are a higher priority. Only the highest priority state in a Superlight will be reflected on the underlying light.",
+          "name": "Priority"
+        },
+        "profile": {
+          "description": "[%key:component::light::common::field_profile_description%]",
+          "name": "[%key:component::light::common::field_profile_name%]"
+        },
+        "rgb_color": {
+          "description": "[%key:component::light::common::field_rgb_color_description%]",
+          "name": "[%key:component::light::common::field_rgb_color_name%]"
+        },
+        "rgbw_color": {
+          "description": "[%key:component::light::common::field_rgbw_color_description%]",
+          "name": "[%key:component::light::common::field_rgbw_color_name%]"
+        },
+        "rgbww_color": {
+          "description": "[%key:component::light::common::field_rgbww_color_description%]",
+          "name": "[%key:component::light::common::field_rgbww_color_name%]"
+        },
+        "transition": {
+          "description": "[%key:component::light::common::field_transition_description%]",
+          "name": "[%key:component::light::common::field_transition_name%]"
+        },
+        "turn_on": {
+          "description": "Whether to turn the light on or off in this state.",
+          "name": "Turn on"
+        },
+        "unlatch": {
+          "description": "This state will allow the underlying light to change states freely and the Superlight will reflect its own state to match. Useful for things like Hue light sync.",
+          "name": "Unlatch"
+        },
+        "white": {
+          "description": "[%key:component::light::common::field_white_description%]",
+          "name": "[%key:component::light::common::field_white_name%]"
+        },
+        "xy_color": {
+          "description": "[%key:component::light::common::field_xy_color_description%]",
+          "name": "[%key:component::light::common::field_xy_color_name%]"
+        }
+      },
+      "name": "Push State"
+    }
+  }
 }

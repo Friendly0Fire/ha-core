@@ -1,0 +1,10 @@
+{
+  "services": {
+    "pop_state": {
+      "service": "mdi:minus-circle"
+    },
+    "push_state": {
+      "service": "mdi:plus-circle"
+    }
+  }
+}

@@ -1,24 +1,21 @@
 """Superlight."""
 
-from __future__ import annotations
-
 import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 import logging
 import sys
-from typing import Any
+from typing import Any, override
 
 import funcy
+import probatio
 from sortedcontainers import SortedSet
-import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components.homeassistant import exposed_entities
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
-    ATTR_COLOR_TEMP,
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_EFFECT_LIST,
     ATTR_HS_COLOR,
@@ -56,45 +53,36 @@ from homeassistant.core import (
     State,
     callback,
 )
-from homeassistant.helpers import (
-    device_registry as dr,
-    entity_platform,
-    entity_registry as er,
-)
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
-from .const import (
-    ATTR_PRIORITY,
-    ATTR_TURN_ON,
-    ATTR_UNLATCH,
-    DOMAIN,
-    SERVICE_SUPERLIGHT_POP_STATE,
-    SERVICE_SUPERLIGHT_PUSH_STATE,
-)
+from .const import ATTR_PRIORITY, ATTR_TURN_ON, ATTR_UNLATCH, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 SUPERLIGHT_PUSH_STATE_SCHEMA = {
     **LIGHT_TURN_ON_SCHEMA,
-    ATTR_PRIORITY: vol.Coerce(int),
-    ATTR_ID: vol.Coerce(str),
-    ATTR_TURN_ON: vol.Coerce(bool),
-    ATTR_UNLATCH: vol.Coerce(bool),
+    ATTR_PRIORITY: probatio.Coerce(int),
+    ATTR_ID: probatio.Coerce(str),
+    ATTR_TURN_ON: probatio.Coerce(bool),
+    ATTR_UNLATCH: probatio.Coerce(bool),
 }
 
 SUPERLIGHT_POP_STATE_SCHEMA = {
-    ATTR_ID: vol.Coerce(str),
+    ATTR_ID: probatio.Coerce(str),
 }
 
-SUPERLIGHT_GET_STATES_SCHEMA = {}
+# SUPERLIGHT_GET_STATES_SCHEMA = {}
 
 VALID_LIGHT_ATTRIBUTES = [str(attr) for attr in LIGHT_TURN_ON_SCHEMA]
 
 
 @dataclass(order=True)
 class PrioritizedState:
+    """Prioritized State."""
+
     priority: int
     id: str = field(compare=False)
     state: bool = field(compare=False)
@@ -109,7 +97,8 @@ class PrioritizedState:
         priority: int | None = None,
         id: str | None = None,
         pop: bool = False,
-    ):
+    ) -> None:
+        """Init."""
         self.id = id if id is not None else attributes[ATTR_ID]
         if not pop:
             self.unlatch = attributes.get(ATTR_UNLATCH, False)
@@ -118,25 +107,29 @@ class PrioritizedState:
             )
             if not self.unlatch:
                 if state is not None:
-                    self.state = state == "on" or state
+                    self.state = state in {"on", True}
                 else:
                     self.state = (
                         attributes[ATTR_TURN_ON] or attributes[ATTR_TURN_ON] == "on"
                     )
                 self.attributes = funcy.project(attributes, VALID_LIGHT_ATTRIBUTES)
             else:
-                self.state = None
-                self.attributes = None
+                self.state = False
+                self.attributes = {}
         else:
             self.priority = 0
-            self.state = None
-            self.attributes = None
+            self.state = False
+            self.attributes = {}
             self.unlatch = False
 
-    def __eq__(self, value: PrioritizedState) -> bool:
-        return self.id == value.id
+    @override
+    def __eq__(self, value: object) -> bool:
+        """Q."""
+        return isinstance(value, PrioritizedState) and self.id == value.id
 
+    @override
     def __hash__(self) -> int:
+        """Hash."""
         return self.id.__hash__()
 
 
@@ -145,6 +138,8 @@ MANUAL_ID: str = "__manual"
 
 
 class Superlight(LightEntity):
+    """Superlight."""
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -167,7 +162,9 @@ class Superlight(LightEntity):
         self._device_id = device_id
         if device_id and (device := device_registry.async_get(device_id)):
             self._attr_device_info = DeviceInfo(
-                connections=device.connections,
+                connections=device.connections
+                if isinstance(device, dr.DeviceEntry)
+                else set[tuple[str, str]](),
                 identifiers=device.identifiers,
             )
         self._attr_entity_category = entity_category
@@ -182,26 +179,28 @@ class Superlight(LightEntity):
 
         self._attr_supported_color_modes = (
             wrapped_light.capabilities[ATTR_SUPPORTED_COLOR_MODES]
-            if wrapped_light
+            if wrapped_light is not None and wrapped_light.capabilities is not None
             else None
         )
 
         if ColorMode.COLOR_TEMP in self._attr_supported_color_modes:
             self._attr_min_color_temp_kelvin = (
                 wrapped_light.capabilities[ATTR_MIN_COLOR_TEMP_KELVIN]
-                if wrapped_light
+                if wrapped_light is not None and wrapped_light.capabilities is not None
                 else None
             )
 
             self._attr_max_color_temp_kelvin = (
                 wrapped_light.capabilities[ATTR_MAX_COLOR_TEMP_KELVIN]
-                if wrapped_light
+                if wrapped_light is not None and wrapped_light.capabilities is not None
                 else None
             )
 
         self._attr_effect_list = (
             wrapped_light.capabilities[ATTR_EFFECT_LIST]
-            if wrapped_light and ATTR_EFFECT_LIST in wrapped_light.capabilities
+            if wrapped_light is not None
+            and wrapped_light.capabilities is not None
+            and ATTR_EFFECT_LIST in wrapped_light.capabilities
             else None
         )
 
@@ -236,11 +235,9 @@ class Superlight(LightEntity):
                 context=self._make_context(),
             )
 
+    @override
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn device on."""
-
-        if ATTR_COLOR_TEMP in kwargs and ATTR_COLOR_TEMP_KELVIN in kwargs:
-            del kwargs[ATTR_COLOR_TEMP]
 
         await self._add_state(
             PrioritizedState(
@@ -249,9 +246,11 @@ class Superlight(LightEntity):
         )
 
     async def push_state(self, **kwargs: Any) -> None:
+        """Push state."""
         await self._add_state(PrioritizedState(self, kwargs))
 
     async def pop_state(self, **kwargs: Any) -> None:
+        """Pop state."""
         await self._remove_state(kwargs["id"])
 
     def _update_states(self):
@@ -265,6 +264,7 @@ class Superlight(LightEntity):
             for s in self.states
         }
 
+    @override
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn device off."""
 
@@ -281,7 +281,7 @@ class Superlight(LightEntity):
         self._attr_rgb_color = state.attributes.get(ATTR_RGB_COLOR)
         self._attr_rgbw_color = state.attributes.get(ATTR_RGBW_COLOR)
         self._attr_rgbww_color = state.attributes.get(ATTR_RGBWW_COLOR)
-        self._attr_color_temp = state.attributes.get(ATTR_COLOR_TEMP)
+        self._attr_color_temp_kelvin = state.attributes.get(ATTR_COLOR_TEMP_KELVIN)
 
     @callback
     def async_state_changed_listener(
@@ -342,6 +342,7 @@ class Superlight(LightEntity):
         await self._apply_state()
         self._update_states()
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
 
@@ -412,23 +413,12 @@ class Superlight(LightEntity):
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: config_entries.ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the Superlight from a config entry."""
     registry = er.async_get(hass)
     entity_id = er.async_validate_entity_id(
         registry, config_entry.options[CONF_ENTITY_ID]
-    )
-    platform = entity_platform.async_get_current_platform()
-    platform.async_register_entity_service(
-        SERVICE_SUPERLIGHT_PUSH_STATE,
-        SUPERLIGHT_PUSH_STATE_SCHEMA,
-        "push_state",
-    )
-    platform.async_register_entity_service(
-        SERVICE_SUPERLIGHT_POP_STATE,
-        SUPERLIGHT_POP_STATE_SCHEMA,
-        "pop_state",
     )
 
     async_add_entities(

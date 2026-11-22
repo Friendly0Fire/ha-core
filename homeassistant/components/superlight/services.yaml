@@ -115,8 +115,8 @@ push_state:
       selector:
         color_temp:
           unit: "kelvin"
-          min: 2000
-          max: 6500
+          min: 1000
+          max: 25000
     brightness: &brightness
       filter: *brightness_support
       advanced: true

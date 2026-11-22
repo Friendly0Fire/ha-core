@@ -1,11 +1,9 @@
 """Advanced virtual light."""
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 import logging
 
-import voluptuous as vol
+import probatio
 
 from homeassistant import config_entries
 from homeassistant.components.homeassistant import exposed_entities
@@ -14,16 +12,21 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ENTITY_ID, EVENT_HOMEASSISTANT_STARTED, Platform
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import (
+    config_validation as cv,
     device_registry as dr,
     discovery_flow,
     entity_registry as er,
 )
+from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.event import async_track_entity_registry_updated_event
-from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.typing import ConfigType, NoEventData
 
-from .const import DOMAIN
+from .const import DATA_COMPONENT, DOMAIN
+from .light import Superlight
+from .services import async_setup_services
 
-PLATFORMS = [Platform.LIGHT, Platform.BUTTON]
+PLATFORMS = [Platform.BUTTON, Platform.LIGHT]
+CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -93,7 +96,7 @@ async def async_discover_devices(
             _LOGGER.debug("New light %s already has superlight, skipping", entity_id)
         return []
 
-    devices: Iterable[str] = []
+    devices: list[str] = []
 
     for eid, entity in ereg.entities.items():
         if entity.domain == LIGHT_DOMAIN and entity.platform != DOMAIN:
@@ -106,19 +109,19 @@ async def async_discover_devices(
     return devices
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Set up Superlight from a config entry."""
     registry = er.async_get(hass)
     device_registry = dr.async_get(hass)
     try:
         entity_id = er.async_validate_entity_id(registry, entry.options[CONF_ENTITY_ID])
-    except vol.Invalid:
+    except probatio.Invalid:
         # The entity is identified by an unknown entity registry ID
         _LOGGER.error(
             "Failed to setup superlight for unknown entity %s",
             entry.options[CONF_ENTITY_ID],
         )
-        return False
+        return
 
     async def async_registry_updated(
         event: Event[er.EventEntityRegistryUpdatedData],
@@ -161,17 +164,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    return True
-
 
 async def config_entry_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update listener, called when the config entry options are changed."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -184,7 +185,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         light_entity_id = er.async_validate_entity_id(
             registry, entry.options[CONF_ENTITY_ID]
         )
-    except vol.Invalid:
+    except probatio.Invalid:
         # The source entity has been removed from the entity registry
         return
 
@@ -213,10 +214,12 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         )
 
 
-async def async_setup(hass: HomeAssistant, hass_config: ConfigType) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up Superlight."""
 
-    async def _async_discovery(evt: Event) -> None:
+    async def _async_discovery(
+        evt: Event[er.EventEntityRegistryUpdatedData] | Event[NoEventData],
+    ) -> None:
         entity_id = None
         should_trigger_discovery = False
         if (
@@ -233,5 +236,12 @@ async def async_setup(hass: HomeAssistant, hass_config: ConfigType) -> bool:
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _async_discovery)
     hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _async_discovery)
+
+    component = hass.data[DATA_COMPONENT] = EntityComponent[Superlight](
+        _LOGGER, DOMAIN, hass
+    )
+    await component.async_setup(config)
+
+    async_setup_services(hass)
 
     return True

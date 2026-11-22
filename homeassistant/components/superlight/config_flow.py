@@ -1,27 +1,23 @@
 """Config flow for Superlight."""
 
-from __future__ import annotations
+from typing import Any, override
 
-from typing import Any
-import voluptuous as vol
+import probatio
 
-from homeassistant.config_entries import (
-    ConfigFlow,
-    ConfigFlowResult,
-)
-from homeassistant.helpers.typing import DiscoveryInfoType
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ENTITY_ID, Platform
+from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.helpers import entity_registry as er, selector
 from homeassistant.helpers.schema_config_entry_flow import (
     wrapped_entity_config_entry_title,
 )
-from homeassistant.data_entry_flow import AbortFlow
+from homeassistant.helpers.typing import DiscoveryInfoType
 
 from .const import DOMAIN
 
-SUPERLIGHT_SCHEMA = vol.Schema(
+SUPERLIGHT_SCHEMA = probatio.Schema(
     {
-        vol.Required(CONF_ENTITY_ID): selector.EntitySelector(
+        probatio.Required(CONF_ENTITY_ID): selector.EntitySelector(
             selector.EntitySelectorConfig(domain=Platform.LIGHT),
         )
     }
@@ -41,6 +37,9 @@ class SuperlightConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Confirm discovery."""
+
+        if self._discovered_entity_id is None:
+            raise ValueError("Discovered entity ID is None")
 
         registry = er.async_get(self.hass)
         entity_entry = registry.async_get(self._discovered_entity_id)
@@ -72,6 +71,7 @@ class SuperlightConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders=placeholders,
         )
 
+    @override
     async def async_step_integration_discovery(
         self, discovery_info: DiscoveryInfoType
     ) -> ConfigFlowResult:
@@ -79,6 +79,7 @@ class SuperlightConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered_entity_id = discovery_info[CONF_ENTITY_ID]
         return await self.async_step_discovery_confirm()
 
+    @override
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, override
 
 from homeassistant import config_entries
 from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN, ButtonEntity
@@ -6,22 +6,27 @@ from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.const import ATTR_ENTITY_ID, ATTR_ID, CONF_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN, SERVICE_SUPERLIGHT_POP_STATE
+from .const import DOMAIN, SuperlightService
 
 
 class SuperlightManualButton(ButtonEntity):
+    """Button."""
+
     def __init__(self, underlying_entity_id: str) -> None:
+        """Init."""
         self._light_id = f"{underlying_entity_id}_superlight"
         self.entity_id = (
             BUTTON_DOMAIN + self._light_id.removeprefix(LIGHT_DOMAIN) + "_manual"
         )
 
+    @override
     async def async_press(self, **kwargs: Any) -> None:
+        """Press."""
         await self.hass.services.async_call(
             DOMAIN,
-            SERVICE_SUPERLIGHT_POP_STATE,
+            SuperlightService.POP_STATE,
             {ATTR_ID: "__manual", ATTR_ENTITY_ID: self._light_id},
             True,
         )
@@ -30,7 +35,7 @@ class SuperlightManualButton(ButtonEntity):
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: config_entries.ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the Superlight from a config entry."""
     registry = er.async_get(hass)
