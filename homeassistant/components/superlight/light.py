@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-import sys
-import logging
-from typing import Any
-import voluptuous as vol
 from dataclasses import dataclass, field
-from sortedcontainers import SortedSet
-import funcy
+import logging
+import sys
+from typing import Any
 
-from homeassistant.components.button import ButtonEntity
-from homeassistant.components.homeassistant import exposed_entities
+import funcy
+from sortedcontainers import SortedSet
+import voluptuous as vol
+
 from homeassistant import config_entries
+from homeassistant.components.homeassistant import exposed_entities
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
@@ -22,55 +22,56 @@ from homeassistant.components.light import (
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_EFFECT_LIST,
     ATTR_HS_COLOR,
-    ATTR_MIN_COLOR_TEMP_KELVIN,
     ATTR_MAX_COLOR_TEMP_KELVIN,
+    ATTR_MIN_COLOR_TEMP_KELVIN,
     ATTR_RGB_COLOR,
     ATTR_RGBW_COLOR,
     ATTR_RGBWW_COLOR,
     ATTR_SUPPORTED_COLOR_MODES,
     ATTR_XY_COLOR,
+    DOMAIN as LIGHT_DOMAIN,
+    LIGHT_TURN_ON_SCHEMA,
     ColorMode,
     LightEntity,
-    LIGHT_TURN_ON_SCHEMA,
 )
-from homeassistant.core import (
-    Event,
-    EventStateChangedData,
-    HomeAssistant,
-    callback,
-    Context,
-    State,
-)
-from homeassistant.helpers import entity_platform
-from homeassistant.helpers.entity import ToggleEntity
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
-from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN
 from homeassistant.const import (
     ATTR_DOMAIN,
-    ATTR_ID,
     ATTR_ENTITY_ID,
+    ATTR_ID,
     ATTR_SERVICE,
-    ATTR_SERVICE_DATA,
+    CONF_ENTITY_ID,
     EVENT_CALL_SERVICE,
     EVENT_STATE_CHANGED,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
-    STATE_ON,
     STATE_OFF,
+    STATE_ON,
     STATE_UNAVAILABLE,
-    CONF_ENTITY_ID,
 )
+from homeassistant.core import (
+    Context,
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    State,
+    callback,
+)
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_platform,
+    entity_registry as er,
+)
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
+
 from .const import (
-    DOMAIN,
-    SERVICE_SUPERLIGHT_PUSH_STATE,
-    SERVICE_SUPERLIGHT_POP_STATE,
     ATTR_PRIORITY,
     ATTR_TURN_ON,
     ATTR_UNLATCH,
+    DOMAIN,
+    SERVICE_SUPERLIGHT_POP_STATE,
+    SERVICE_SUPERLIGHT_PUSH_STATE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -408,22 +409,6 @@ class Superlight(LightEntity):
         return {"entity_id": self._light_entity_id}
 
 
-class SuperlightManualButton(ButtonEntity):
-    def __init__(self, superlight: Superlight):
-        self._light_id = superlight.entity_id
-        self.entity_id = (
-            BUTTON_DOMAIN + self._light_id.removeprefix(LIGHT_DOMAIN) + "_manual"
-        )
-
-    async def async_press(self, **kwargs: Any) -> None:
-        await self.hass.services.async_call(
-            DOMAIN,
-            SERVICE_SUPERLIGHT_POP_STATE,
-            {ATTR_ID: "__manual", ATTR_ENTITY_ID: self._light_id},
-            True,
-        )
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: config_entries.ConfigEntry,
@@ -446,11 +431,6 @@ async def async_setup_entry(
         "pop_state",
     )
 
-    sl = Superlight(hass, config_entry.title, entity_id, config_entry.entry_id)
-
     async_add_entities(
-        [
-            sl,
-            SuperlightManualButton(sl),
-        ]
+        [Superlight(hass, config_entry.title, entity_id, config_entry.entry_id)]
     )
