@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 import logging
 from typing import Any
-from collections.abc import Mapping
 import voluptuous as vol
 from dataclasses import dataclass, field
 from sortedcontainers import SortedSet
@@ -58,7 +57,13 @@ from homeassistant.const import (
     CONF_ENTITY_ID,
 )
 from homeassistant.helpers.event import async_track_state_change_event
-from .const import DOMAIN, SERVICE_SUPERLIGHT_PUSH_STATE, ATTR_PRIORITY, ATTR_TURN_ON
+from .const import (
+    DOMAIN,
+    SERVICE_SUPERLIGHT_PUSH_STATE,
+    SERVICE_SUPERLIGHT_POP_STATE,
+    ATTR_PRIORITY,
+    ATTR_TURN_ON,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,13 +74,17 @@ SUPERLIGHT_PUSH_STATE_SCHEMA = {
     ATTR_TURN_ON: vol.Coerce(bool),
 }
 
+SUPERLIGHT_POP_STATE_SCHEMA = {
+    ATTR_ID: vol.Coerce(str),
+}
+
 
 @dataclass(order=True)
 class PrioritizedState:
     priority: int
     id: str = field(compare=False)
     state: bool = field(compare=False)
-    attributes: Mapping[str, Any] = field(compare=False)
+    attributes: dict[str, Any] = field(compare=False)
 
     def __init__(
         self,
@@ -83,14 +92,24 @@ class PrioritizedState:
         state: str | bool | None = None,
         priority: int | None = None,
         id: str | None = None,
+        pop: bool = False,
     ):
-        self.priority = priority if priority is not None else attributes[ATTR_PRIORITY]
         self.id = id if id is not None else attributes[ATTR_ID]
-        if state is not None:
-            self.state = state == "on" or state
+        if not pop:
+            self.priority = (
+                priority if priority is not None else attributes[ATTR_PRIORITY]
+            )
+            if state is not None:
+                self.state = state == "on" or state
+            else:
+                self.state = (
+                    attributes[ATTR_TURN_ON] or attributes[ATTR_TURN_ON] == "on"
+                )
+            self.attributes = funcy.project(attributes, LIGHT_TURN_ON_SCHEMA.keys())
         else:
-            self.state = attributes[ATTR_TURN_ON] or attributes[ATTR_TURN_ON] == "on"
-        self.attributes = funcy.omit(attributes, [ATTR_PRIORITY, ATTR_ID])
+            self.priority = 0
+            self.state = None
+            self.attributes = None
 
     def __eq__(self, value: PrioritizedState) -> bool:
         return self.id == value.id
@@ -174,8 +193,11 @@ class Superlight(LightEntity):
         return context
 
     async def _apply_state(self):
-        state: PrioritizedState = self.states[0]
-        if state.state:
+        state: PrioritizedState | None = None
+        if len(self.states) > 0:
+            state = self.states[-1]
+
+        if state is not None and state.state:
             await self.hass.services.async_call(
                 LIGHT_DOMAIN,
                 SERVICE_TURN_ON,
@@ -198,7 +220,7 @@ class Superlight(LightEntity):
         if ATTR_COLOR_TEMP in kwargs and ATTR_COLOR_TEMP_KELVIN in kwargs:
             del kwargs[ATTR_COLOR_TEMP]
 
-        self._add_state(
+        await self._add_state(
             PrioritizedState(kwargs, state=True, priority=MAX_PRIORITY, id=MANUAL_ID)
         )
 
@@ -211,14 +233,14 @@ class Superlight(LightEntity):
         # )
 
     async def push_state(self, **kwargs: Any) -> None:
-        self._add_state(PrioritizedState(kwargs))
+        await self._add_state(PrioritizedState(kwargs))
 
     async def pop_state(self, **kwargs: Any) -> None:
-        self._remove_state(kwargs["id"])
+        await self._remove_state(kwargs["id"])
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn device off."""
-        self._add_state(
+        await self._add_state(
             PrioritizedState({}, state=False, priority=MAX_PRIORITY, id=MANUAL_ID)
         )
         # await self.hass.services.async_call(
@@ -282,13 +304,18 @@ class Superlight(LightEntity):
             )
         )
 
-    def _add_state(self, state: PrioritizedState):
-        self.states.append(state)
-        self._apply_state()
+    async def _add_state(self, state: PrioritizedState):
+        self.states.discard(state)
+        self.states.add(state)
+        await self._apply_state()
 
-    def _remove_state(self, id: str):
-        self.states.discard(PrioritizedState({}, id=id))
-        self._apply_state()
+    async def _remove_state(self, id: str):
+        dummy = PrioritizedState({}, id=id, pop=True)
+        for s in self.states:
+            if s == dummy:
+                self.states.remove(s)
+                break
+        await self._apply_state()
 
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
@@ -372,6 +399,11 @@ async def async_setup_entry(
         SERVICE_SUPERLIGHT_PUSH_STATE,
         SUPERLIGHT_PUSH_STATE_SCHEMA,
         "push_state",
+    )
+    platform.async_register_entity_service(
+        SERVICE_SUPERLIGHT_POP_STATE,
+        SUPERLIGHT_POP_STATE_SCHEMA,
+        "pop_state",
     )
 
     async_add_entities(
