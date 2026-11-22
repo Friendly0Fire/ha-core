@@ -7,23 +7,27 @@ from collections.abc import Iterable
 from typing import Any
 from datetime import timedelta
 
+import voluptuous as vol
+
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    CONF_TARGET,
+    CONF_ENTITY_ID,
     CONF_ALIAS,
     CONF_UNIQUE_ID,
     EVENT_HOMEASSISTANT_STARTED,
     Platform,
 )
+from homeassistant.components.homeassistant import exposed_entities
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry, discovery_flow
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import entity_registry as er, device_registry as dr
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+from homeassistant.helpers.event import async_track_entity_registry_updated_event
 
 from .light import Superlight
 from .const import DOMAIN
@@ -31,6 +35,27 @@ from .const import DOMAIN
 PLATFORMS = [Platform.LIGHT]
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@callback
+def async_add_to_device(
+    hass: HomeAssistant, entry: ConfigEntry, entity_id: str
+) -> str | None:
+    """Add our config entry to the tracked entity's device."""
+    registry = er.async_get(hass)
+    device_registry = dr.async_get(hass)
+    device_id = None
+
+    if (
+        not (wrapped_light := registry.async_get(entity_id))
+        or not (device_id := wrapped_light.device_id)
+        or not (device_registry.async_get(device_id))
+    ):
+        return device_id
+
+    device_registry.async_update_device(device_id, add_config_entry_id=entry.entry_id)
+
+    return device_id
 
 
 @callback
@@ -45,32 +70,42 @@ def async_trigger_discovery(
             hass,
             DOMAIN,
             context={"source": config_entries.SOURCE_INTEGRATION_DISCOVERY},
-            data={CONF_TARGET: device.light_entity_id},
+            data={CONF_ENTITY_ID: device.light_entity_id},
         )
 
 
 async def async_discover_devices(
-    hass: HomeAssistant, entity_id: str | None
+    hass: HomeAssistant, entity_id: str | None, removing: bool | None
 ) -> Iterable[Superlight]:
     """Discover available lights."""
+    if entity_id is not None:
+        assert removing is not None
 
     ereg = er.async_get(hass)
 
-    async def _async_already_has_superlight(entity: er.RegistryEntry) -> bool:
+    async def _async_get_superlight_id(entity: er.RegistryEntry) -> str | None:
         if not entity.unique_id:
-            return False
-        superlight_id = ereg.async_get_entity_id(
+            return None
+        return ereg.async_get_entity_id(
             LIGHT_DOMAIN, DOMAIN, f"{entity.unique_id}_superlight"
         )
-        return superlight_id is not None
 
     if entity_id is not None:
         entity = ereg.async_get(entity_id)
         if entity.domain == LIGHT_DOMAIN and entity.platform != DOMAIN:
-            _LOGGER.debug("Detected new light %s", entity_id)
-            if not await _async_already_has_superlight(entity):
-                return [Superlight(hass, entity_id)]
-            _LOGGER.debug("New light %s already has superlight", entity_id)
+            superlight_id = await _async_get_superlight_id(entity)
+            if removing:
+                _LOGGER.debug("Removing light %s", entity_id)
+                if superlight_id is not None:
+                    _LOGGER.debug("Light %s has superlight, removing", entity_id)
+                    ereg.async_remove(superlight_id)
+            else:
+                _LOGGER.debug("Detected new light %s", entity_id)
+                if superlight_id is None:
+                    return [Superlight(hass, entity_id)]
+                _LOGGER.debug(
+                    "New light %s already has superlight, skipping", entity_id
+                )
             return []
 
     devices: Iterable[Superlight] = []
@@ -78,7 +113,7 @@ async def async_discover_devices(
     for id, entity in ereg.entities.items():
         if entity.domain == LIGHT_DOMAIN and entity.platform != DOMAIN:
             _LOGGER.debug("Detected light %s", id)
-            if not await _async_already_has_superlight(entity):
+            if await _async_get_superlight_id(entity) is None:
                 devices.append(Superlight(hass, id))
             else:
                 _LOGGER.debug("Light %s already has superlight", id)
@@ -88,10 +123,65 @@ async def async_discover_devices(
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Superlight from a config entry."""
+    registry = er.async_get(hass)
+    device_registry = dr.async_get(hass)
+    try:
+        entity_id = er.async_validate_entity_id(registry, entry.options[CONF_ENTITY_ID])
+    except vol.Invalid:
+        # The entity is identified by an unknown entity registry ID
+        _LOGGER.error(
+            "Failed to setup superlight for unknown entity %s",
+            entry.options[CONF_ENTITY_ID],
+        )
+        return False
+
+    async def async_registry_updated(
+        event: Event[er.EventEntityRegistryUpdatedData],
+    ) -> None:
+        """Handle entity registry update."""
+        data = event.data
+        if data["action"] == "remove":
+            await hass.config_entries.async_remove(entry.entry_id)
+
+        if data["action"] != "update":
+            return
+
+        if "entity_id" in data["changes"]:
+            # Entity_id changed, reload the config entry
+            await hass.config_entries.async_reload(entry.entry_id)
+
+        if device_id and "device_id" in data["changes"]:
+            # If the tracked light is no longer in the device, remove our config entry
+            # from the device
+            if (
+                not (entity_entry := registry.async_get(data[CONF_ENTITY_ID]))
+                or not device_registry.async_get(device_id)
+                or entity_entry.device_id == device_id
+            ):
+                # No need to do any cleanup
+                return
+
+            device_registry.async_update_device(
+                device_id, remove_config_entry_id=entry.entry_id
+            )
+
+    entry.async_on_unload(
+        async_track_entity_registry_updated_event(
+            hass, entity_id, async_registry_updated
+        )
+    )
+    entry.async_on_unload(entry.add_update_listener(config_entry_update_listener))
+
+    device_id = async_add_to_device(hass, entry, entity_id)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
+
+
+async def config_entry_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Update listener, called when the config entry options are changed."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -99,15 +189,67 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Unload a config entry.
+
+    This will unhide the wrapped entity and restore assistant expose settings.
+    """
+    registry = er.async_get(hass)
+    try:
+        light_entity_id = er.async_validate_entity_id(
+            registry, entry.options[CONF_ENTITY_ID]
+        )
+    except vol.Invalid:
+        # The source entity has been removed from the entity registry
+        return
+
+    if not (light_entity_entry := registry.async_get(light_entity_id)):
+        return
+
+    # Unhide the wrapped entity
+    if light_entity_entry.hidden_by == er.RegistryEntryHider.INTEGRATION:
+        registry.async_update_entity(light_entity_id, hidden_by=None)
+
+    superlight_entries = er.async_entries_for_config_entry(registry, entry.entry_id)
+    if not superlight_entries:
+        return
+
+    superlight_entry = superlight_entries[0]
+
+    # Restore assistant expose settings
+    expose_settings = exposed_entities.async_get_entity_settings(
+        hass, superlight_entry.entity_id
+    )
+    for assistant, settings in expose_settings.items():
+        if (should_expose := settings.get("should_expose")) is None:
+            continue
+        exposed_entities.async_expose_entity(
+            hass, assistant, light_entity_id, should_expose
+        )
+
+
 async def async_setup(hass: HomeAssistant, hass_config: ConfigType) -> bool:
     """Set up Superlight."""
 
     async def _async_discovery(evt: Event) -> None:
         entity_id = None
+        should_trigger_discovery = False
+        removing = False
         if evt.event_type == er.EVENT_ENTITY_REGISTRY_UPDATED:
             if evt.data.get("action") == "create":
+                should_trigger_discovery = True
                 entity_id = evt.data.get("entity_id")
-        async_trigger_discovery(hass, await async_discover_devices(hass, entity_id))
+            elif evt.data.get("action") == "remove":
+                should_trigger_discovery = True
+                entity_id = evt.data.get("entity_id")
+                removing = True
+        elif evt.event_type == EVENT_HOMEASSISTANT_STARTED:
+            should_trigger_discovery = True
+
+        if should_trigger_discovery:
+            async_trigger_discovery(
+                hass, await async_discover_devices(hass, entity_id, removing)
+            )
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _async_discovery)
     hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _async_discovery)

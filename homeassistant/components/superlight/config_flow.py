@@ -12,7 +12,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
 )
 from homeassistant.helpers.typing import DiscoveryInfoType
-from homeassistant.const import CONF_TARGET, CONF_ALIAS, CONF_UNIQUE_ID
+from homeassistant.const import CONF_ENTITY_ID, CONF_ALIAS, CONF_UNIQUE_ID
 
 from .const import DOMAIN
 from .light import Superlight
@@ -34,7 +34,7 @@ class SuperlightConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             return self.async_create_entry(
                 title=self._discovered_device.name,
-                data={CONF_TARGET: self._discovered_device.light_entity_id},
+                data={CONF_ENTITY_ID: self._discovered_device.light_entity_id},
             )
 
         self._set_confirm_only()
@@ -49,7 +49,7 @@ class SuperlightConfigFlow(ConfigFlow, domain=DOMAIN):
         self, discovery_info: DiscoveryInfoType
     ) -> ConfigFlowResult:
         """Handle automatic discovery."""
-        self._discovered_device = Superlight(self.hass, discovery_info[CONF_TARGET])
+        self._discovered_device = Superlight(self.hass, discovery_info[CONF_ENTITY_ID])
         await self.async_set_unique_id(
             self._discovered_device.unique_id, raise_on_progress=False
         )
