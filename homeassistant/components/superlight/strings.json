@@ -37,6 +37,10 @@
                     "name": "Turn on",
                     "description": "Whether to turn the light on or off in this state."
                 },
+                "unlatch": {
+                    "name": "Unlatch",
+                    "description": "This state will allow the underlying light to change states freely and the Superlight will reflect its own state to match. Useful for things like Hue light sync."
+                },
                 "transition": {
                     "name": "[%key:component::light::common::field_transition_name%]",
                     "description": "[%key:component::light::common::field_transition_description%]"

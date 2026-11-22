@@ -66,6 +66,7 @@ from .const import (
     SERVICE_SUPERLIGHT_POP_STATE,
     ATTR_PRIORITY,
     ATTR_TURN_ON,
+    ATTR_UNLATCH,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ SUPERLIGHT_PUSH_STATE_SCHEMA = {
     ATTR_PRIORITY: vol.Coerce(int),
     ATTR_ID: vol.Coerce(str),
     ATTR_TURN_ON: vol.Coerce(bool),
+    ATTR_UNLATCH: vol.Coerce(bool),
 }
 
 SUPERLIGHT_POP_STATE_SCHEMA = {
@@ -91,6 +93,7 @@ class PrioritizedState:
     priority: int
     id: str = field(compare=False)
     state: bool = field(compare=False)
+    unlatch: bool = field(compare=False)
     attributes: dict[str, Any] = field(compare=False)
 
     def __init__(
@@ -104,20 +107,26 @@ class PrioritizedState:
     ):
         self.id = id if id is not None else attributes[ATTR_ID]
         if not pop:
+            self.unlatch = attributes.get(ATTR_UNLATCH, False)
             self.priority = (
                 priority if priority is not None else attributes[ATTR_PRIORITY]
             )
-            if state is not None:
-                self.state = state == "on" or state
+            if not self.unlatch:
+                if state is not None:
+                    self.state = state == "on" or state
+                else:
+                    self.state = (
+                        attributes[ATTR_TURN_ON] or attributes[ATTR_TURN_ON] == "on"
+                    )
+                self.attributes = funcy.project(attributes, VALID_LIGHT_ATTRIBUTES)
             else:
-                self.state = (
-                    attributes[ATTR_TURN_ON] or attributes[ATTR_TURN_ON] == "on"
-                )
-            self.attributes = funcy.project(attributes, VALID_LIGHT_ATTRIBUTES)
+                self.state = None
+                self.attributes = None
         else:
             self.priority = 0
             self.state = None
             self.attributes = None
+            self.unlatch = False
 
     def __eq__(self, value: PrioritizedState) -> bool:
         return self.id == value.id
@@ -131,8 +140,6 @@ MANUAL_ID: str = "__manual"
 
 
 class Superlight(LightEntity):
-    states: SortedSet
-
     def __init__(
         self,
         hass: HomeAssistant,
@@ -204,6 +211,9 @@ class Superlight(LightEntity):
         if len(self.states) > 0:
             state = self.states[-1]
 
+        if state is not None and state.unlatch:
+            return
+
         if state is not None and state.state:
             await self.hass.services.async_call(
                 LIGHT_DOMAIN,
@@ -241,7 +251,11 @@ class Superlight(LightEntity):
 
     def _update_states(self):
         self._attr_extra_state_attributes["states"] = {
-            s.id: {"priority": s.priority, "attributes": s.attributes}
+            s.id: {
+                "priority": s.priority,
+                "unlatch": s.unlatch,
+                "attributes": s.attributes,
+            }
             for s in self.states
         }
 
@@ -277,7 +291,7 @@ class Superlight(LightEntity):
         self._attr_available = True
 
         # Skip events if we have no stack: we let the underlying light do what it wants
-        if len(self.states) == 0:
+        if len(self.states) == 0 or self.states[-1].unlatch:
             self._sync_state(state)
             return
 
