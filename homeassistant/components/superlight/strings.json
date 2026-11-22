@@ -1,0 +1,94 @@
+{
+    "config": {
+        "flow_title": "{name}",
+        "step": {
+            "discovery_confirm": {
+                "description": "Do you want to set up {name}?"
+            }
+        }
+    },
+    "services": {
+        "push_state": {
+            "name": "Push State",
+            "description": "Pushes a new light state (color, brightness, etc.) with a given priority.",
+            "fields": {
+                "priority": {
+                    "name": "Priority",
+                    "description": "Priority of the new state. Higher values are a higher priority. Only the highest priority state in a Superlight will be reflected on the underlying light."
+                },
+                "id": {
+                    "name": "ID",
+                    "description": "Unique state identifier. Used to modify/remove a state from a Superlight."
+                },
+                "transition": {
+                    "name": "[%key:component::light::common::field_transition_name%]",
+                    "description": "[%key:component::light::common::field_transition_description%]"
+                },
+                "rgb_color": {
+                    "name": "[%key:component::light::common::field_rgb_color_name%]",
+                    "description": "[%key:component::light::common::field_rgb_color_description%]"
+                },
+                "rgbw_color": {
+                    "name": "[%key:component::light::common::field_rgbw_color_name%]",
+                    "description": "[%key:component::light::common::field_rgbw_color_description%]"
+                },
+                "rgbww_color": {
+                    "name": "[%key:component::light::common::field_rgbww_color_name%]",
+                    "description": "[%key:component::light::common::field_rgbww_color_description%]"
+                },
+                "color_name": {
+                    "name": "[%key:component::light::common::field_color_name_name%]",
+                    "description": "[%key:component::light::common::field_color_name_description%]"
+                },
+                "hs_color": {
+                    "name": "[%key:component::light::common::field_hs_color_name%]",
+                    "description": "[%key:component::light::common::field_hs_color_description%]"
+                },
+                "xy_color": {
+                    "name": "[%key:component::light::common::field_xy_color_name%]",
+                    "description": "[%key:component::light::common::field_xy_color_description%]"
+                },
+                "color_temp": {
+                    "name": "[%key:component::light::common::field_color_temp_name%]",
+                    "description": "[%key:component::light::common::field_color_temp_description%]"
+                },
+                "kelvin": {
+                    "name": "[%key:component::light::common::field_kelvin_name%]",
+                    "description": "[%key:component::light::common::field_kelvin_description%]"
+                },
+                "brightness": {
+                    "name": "[%key:component::light::common::field_brightness_name%]",
+                    "description": "[%key:component::light::common::field_brightness_description%]"
+                },
+                "brightness_pct": {
+                    "name": "[%key:component::light::common::field_brightness_pct_name%]",
+                    "description": "[%key:component::light::common::field_brightness_pct_description%]"
+                },
+                "brightness_step": {
+                    "name": "[%key:component::light::common::field_brightness_step_name%]",
+                    "description": "[%key:component::light::common::field_brightness_step_description%]"
+                },
+                "brightness_step_pct": {
+                    "name": "[%key:component::light::common::field_brightness_step_pct_name%]",
+                    "description": "[%key:component::light::common::field_brightness_step_pct_description%]"
+                },
+                "white": {
+                    "name": "[%key:component::light::common::field_white_name%]",
+                    "description": "[%key:component::light::common::field_white_description%]"
+                },
+                "profile": {
+                    "name": "[%key:component::light::common::field_profile_name%]",
+                    "description": "[%key:component::light::common::field_profile_description%]"
+                },
+                "flash": {
+                    "name": "[%key:component::light::common::field_flash_name%]",
+                    "description": "[%key:component::light::common::field_flash_description%]"
+                },
+                "effect": {
+                    "name": "[%key:component::light::common::field_effect_name%]",
+                    "description": "[%key:component::light::common::field_effect_description%]"
+                }
+            }
+        }
+    }
+}

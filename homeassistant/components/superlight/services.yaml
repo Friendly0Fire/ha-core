@@ -1,0 +1,159 @@
+# Describes the format for available light services
+.brightness_support: &brightness_support
+  attribute:
+    supported_color_modes:
+      - light.ColorMode.BRIGHTNESS
+      - light.ColorMode.COLOR_TEMP
+      - light.ColorMode.HS
+      - light.ColorMode.XY
+      - light.ColorMode.RGB
+      - light.ColorMode.RGBW
+      - light.ColorMode.RGBWW
+
+.color_support: &color_support
+  attribute:
+    supported_color_modes:
+      - light.ColorMode.HS
+      - light.ColorMode.XY
+      - light.ColorMode.RGB
+      - light.ColorMode.RGBW
+      - light.ColorMode.RGBWW
+
+.color_temp_support: &color_temp_support
+  attribute:
+    supported_color_modes:
+      - light.ColorMode.COLOR_TEMP
+      - light.ColorMode.HS
+      - light.ColorMode.XY
+      - light.ColorMode.RGB
+      - light.ColorMode.RGBW
+      - light.ColorMode.RGBWW
+
+push_state:
+  target:
+    entity:
+      integration: superlight
+      domain: light
+  fields:
+    priority:
+      required: true
+      selector:
+        number:
+    id:
+      required: true
+      selector:
+        text:
+    transition: &transition
+      filter:
+        supported_features:
+          - light.LightEntityFeature.TRANSITION
+      selector:
+        number:
+          min: 0
+          max: 300
+          unit_of_measurement: seconds
+    rgb_color: &rgb_color
+      filter: *color_support
+      example: "[255, 100, 100]"
+      selector:
+        color_rgb:
+    rgbw_color: &rgbw_color
+      filter: *color_support
+      advanced: true
+      example: "[255, 100, 100, 50]"
+      selector:
+        object:
+    rgbww_color: &rgbww_color
+      filter: *color_support
+      advanced: true
+      example: "[255, 100, 100, 50, 70]"
+      selector:
+        object:
+    hs_color: &hs_color
+      filter: *color_support
+      advanced: true
+      example: "[300, 70]"
+      selector:
+        object:
+    xy_color: &xy_color
+      filter: *color_support
+      advanced: true
+      example: "[0.52, 0.43]"
+      selector:
+        object:
+    color_temp: &color_temp
+      filter: *color_temp_support
+      advanced: true
+      selector:
+        color_temp:
+          unit: "mired"
+          min: 153
+          max: 500
+    kelvin: &kelvin
+      filter: *color_temp_support
+      selector:
+        color_temp:
+          unit: "kelvin"
+          min: 2000
+          max: 6500
+    brightness: &brightness
+      filter: *brightness_support
+      advanced: true
+      selector:
+        number:
+          min: 0
+          max: 255
+    brightness_pct: &brightness_pct
+      filter: *brightness_support
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+    brightness_step:
+      filter: *brightness_support
+      advanced: true
+      selector:
+        number:
+          min: -225
+          max: 255
+    brightness_step_pct:
+      filter: *brightness_support
+      selector:
+        number:
+          min: -100
+          max: 100
+          unit_of_measurement: "%"
+    white: &white
+      filter:
+        attribute:
+          supported_color_modes:
+            - light.ColorMode.WHITE
+      advanced: true
+      selector:
+        constant:
+          value: true
+          label: Enabled
+    profile: &profile
+      advanced: true
+      example: relax
+      selector:
+        text:
+    flash: &flash
+      filter:
+        supported_features:
+          - light.LightEntityFeature.FLASH
+      advanced: true
+      selector:
+        select:
+          options:
+            - label: "Long"
+              value: "long"
+            - label: "Short"
+              value: "short"
+    effect: &effect
+      filter:
+        supported_features:
+          - light.LightEntityFeature.EFFECT
+      selector:
+        text:
