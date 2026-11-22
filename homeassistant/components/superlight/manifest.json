@@ -3,5 +3,9 @@
     "name": "Superlight",
     "config_flow": true,
     "iot_class": "local_push",
+    "requirements": [
+        "sortedcontainers",
+        "funcy"
+    ],
     "version": "0.1.0"
 }
