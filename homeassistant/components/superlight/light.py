@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from sortedcontainers import SortedSet
 import funcy
 
+from homeassistant.components.button import ButtonEntity
 from homeassistant.components.homeassistant import exposed_entities
 from homeassistant import config_entries
 from homeassistant.components.light import (
@@ -41,10 +42,12 @@ from homeassistant.core import (
     State,
 )
 from homeassistant.helpers import entity_platform
+from homeassistant.helpers.entity import ToggleEntity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN
 from homeassistant.const import (
     ATTR_DOMAIN,
     ATTR_ID,
@@ -405,6 +408,22 @@ class Superlight(LightEntity):
         return {"entity_id": self._light_entity_id}
 
 
+class SuperlightManualButton(ButtonEntity):
+    def __init__(self, superlight: Superlight):
+        self._light_id = superlight.entity_id
+        self.entity_id = (
+            BUTTON_DOMAIN + self._light_id.removeprefix(LIGHT_DOMAIN) + "_manual"
+        )
+
+    async def async_press(self, **kwargs: Any) -> None:
+        await self.hass.services.async_call(
+            DOMAIN,
+            SERVICE_SUPERLIGHT_POP_STATE,
+            {ATTR_ID: "__manual", ATTR_ENTITY_ID: self._light_id},
+            True,
+        )
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: config_entries.ConfigEntry,
@@ -427,6 +446,11 @@ async def async_setup_entry(
         "pop_state",
     )
 
+    sl = Superlight(hass, config_entry.title, entity_id, config_entry.entry_id)
+
     async_add_entities(
-        [Superlight(hass, config_entry.title, entity_id, config_entry.entry_id)]
+        [
+            sl,
+            SuperlightManualButton(sl),
+        ]
     )
