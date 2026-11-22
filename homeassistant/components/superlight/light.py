@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import logging
 from typing import Any
@@ -36,6 +37,7 @@ from homeassistant.core import (
     HomeAssistant,
     callback,
     Context,
+    State,
 )
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -188,9 +190,7 @@ class Superlight(LightEntity):
         self.states = SortedSet()
 
     def _make_context(self):
-        context = Context(self._context.user_id, self.unique_id, self._context.id)
-        context.origin_event = self._context.origin_event
-        return context
+        return Context(parent_id=self.unique_id)
 
     async def _apply_state(self):
         state: PrioritizedState | None = None
@@ -224,14 +224,6 @@ class Superlight(LightEntity):
             PrioritizedState(kwargs, state=True, priority=MAX_PRIORITY, id=MANUAL_ID)
         )
 
-        # await self.hass.services.async_call(
-        #    LIGHT_DOMAIN,
-        #    SERVICE_TURN_ON,
-        #    {ATTR_ENTITY_ID: self._light_entity_id, **kwargs},
-        #    blocking=True,
-        #    context=self._make_context(),
-        # )
-
     async def push_state(self, **kwargs: Any) -> None:
         await self._add_state(PrioritizedState(kwargs))
 
@@ -243,13 +235,17 @@ class Superlight(LightEntity):
         await self._add_state(
             PrioritizedState({}, state=False, priority=MAX_PRIORITY, id=MANUAL_ID)
         )
-        # await self.hass.services.async_call(
-        #    LIGHT_DOMAIN,
-        #    SERVICE_TURN_OFF,
-        #    {ATTR_ENTITY_ID: self._light_entity_id, **kwargs},
-        #    blocking=True,
-        #    context=self._make_context(),
-        # )
+
+    def _sync_state(self, state: State):
+        self._attr_is_on = state.state == STATE_ON
+        self._attr_color_mode = state.attributes.get(ATTR_COLOR_MODE)
+        self._attr_brightness = state.attributes.get(ATTR_BRIGHTNESS)
+        self._attr_hs_color = state.attributes.get(ATTR_HS_COLOR)
+        self._attr_xy_color = state.attributes.get(ATTR_XY_COLOR)
+        self._attr_rgb_color = state.attributes.get(ATTR_RGB_COLOR)
+        self._attr_rgbw_color = state.attributes.get(ATTR_RGBW_COLOR)
+        self._attr_rgbww_color = state.attributes.get(ATTR_RGBWW_COLOR)
+        self._attr_color_temp = state.attributes.get(ATTR_COLOR_TEMP)
 
     @callback
     def async_state_changed_listener(
@@ -264,15 +260,11 @@ class Superlight(LightEntity):
             return
 
         self._attr_available = True
-        self._attr_is_on = state.state == STATE_ON
-        self._attr_color_mode = state.attributes.get(ATTR_COLOR_MODE)
-        self._attr_brightness = state.attributes.get(ATTR_BRIGHTNESS)
-        self._attr_hs_color = state.attributes.get(ATTR_HS_COLOR)
-        self._attr_xy_color = state.attributes.get(ATTR_XY_COLOR)
-        self._attr_rgb_color = state.attributes.get(ATTR_RGB_COLOR)
-        self._attr_rgbw_color = state.attributes.get(ATTR_RGBW_COLOR)
-        self._attr_rgbww_color = state.attributes.get(ATTR_RGBWW_COLOR)
-        self._attr_color_temp = state.attributes.get(ATTR_COLOR_TEMP)
+
+        # Skip events if we have no stack: we let the underlying light do what it wants
+        if len(self.states) == 0:
+            self._sync_state(state)
+            return
 
         # Skip events spawned by this Superlight
         if (
@@ -286,23 +278,18 @@ class Superlight(LightEntity):
                 and orgevt.data.get(ATTR_SERVICE) == SERVICE_TURN_ON
             ):
                 if orgevt.context.parent_id == self.unique_id:
+                    # We can reflect the underlying light state after it's been translated and applied by HA
+                    self._sync_state(state)
                     return
 
-            # Skip events not caused by a light domain service call
+            # Skip events not caused by a light domain service call or a state change (e.g., from an external app)
             if (
                 orgevt.event_type != EVENT_CALL_SERVICE
                 or orgevt.data.get(ATTR_DOMAIN) != LIGHT_DOMAIN
-            ):
+            ) and (orgevt.event_type != EVENT_STATE_CHANGED):
                 return
 
-        self._add_state(
-            PrioritizedState(
-                state.attributes,
-                state=state.state == STATE_ON,
-                priority=MAX_PRIORITY,
-                id=MANUAL_ID,
-            )
-        )
+        asyncio.run_coroutine_threadsafe(self._apply_state(), self.hass.loop)
 
     async def _add_state(self, state: PrioritizedState):
         self.states.discard(state)
