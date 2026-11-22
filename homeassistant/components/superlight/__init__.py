@@ -20,16 +20,18 @@ from homeassistant.const import (
 )
 from homeassistant.components.homeassistant import exposed_entities
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.helpers import device_registry, discovery_flow
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers import entity_registry as er, device_registry as dr
+from homeassistant.helpers import (
+    discovery_flow,
+    entity_registry as er,
+    device_registry as dr,
+)
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.helpers.event import async_track_entity_registry_updated_event
 
-from .light import Superlight
 from .const import DOMAIN
 
 PLATFORMS = [Platform.LIGHT]
@@ -61,26 +63,23 @@ def async_add_to_device(
 @callback
 def async_trigger_discovery(
     hass: HomeAssistant,
-    discovered_devices: Iterable[Superlight],
+    discovered_entity_ids: Iterable[str],
 ) -> None:
     """Trigger config flows for discovered devices."""
 
-    for device in discovered_devices:
+    for entity_id in discovered_entity_ids:
         discovery_flow.async_create_flow(
             hass,
             DOMAIN,
             context={"source": config_entries.SOURCE_INTEGRATION_DISCOVERY},
-            data={CONF_ENTITY_ID: device.light_entity_id},
+            data={CONF_ENTITY_ID: entity_id},
         )
 
 
 async def async_discover_devices(
-    hass: HomeAssistant, entity_id: str | None, removing: bool | None
-) -> Iterable[Superlight]:
+    hass: HomeAssistant, entity_id: str | None
+) -> Iterable[str]:
     """Discover available lights."""
-    if entity_id is not None:
-        assert removing is not None
-
     ereg = er.async_get(hass)
 
     async def _async_get_superlight_id(entity: er.RegistryEntry) -> str | None:
@@ -92,31 +91,27 @@ async def async_discover_devices(
 
     if entity_id is not None:
         entity = ereg.async_get(entity_id)
-        if entity.domain == LIGHT_DOMAIN and entity.platform != DOMAIN:
+        if (
+            entity is not None
+            and entity.domain == LIGHT_DOMAIN
+            and entity.platform != DOMAIN
+        ):
             superlight_id = await _async_get_superlight_id(entity)
-            if removing:
-                _LOGGER.debug("Removing light %s", entity_id)
-                if superlight_id is not None:
-                    _LOGGER.debug("Light %s has superlight, removing", entity_id)
-                    ereg.async_remove(superlight_id)
-            else:
-                _LOGGER.debug("Detected new light %s", entity_id)
-                if superlight_id is None:
-                    return [Superlight(hass, entity_id)]
-                _LOGGER.debug(
-                    "New light %s already has superlight, skipping", entity_id
-                )
-            return []
+            _LOGGER.debug("Detected new light %s", entity_id)
+            if superlight_id is None:
+                return [entity_id]
+            _LOGGER.debug("New light %s already has superlight, skipping", entity_id)
+        return []
 
-    devices: Iterable[Superlight] = []
+    devices: Iterable[str] = []
 
-    for id, entity in ereg.entities.items():
+    for entity_id, entity in ereg.entities.items():
         if entity.domain == LIGHT_DOMAIN and entity.platform != DOMAIN:
-            _LOGGER.debug("Detected light %s", id)
+            _LOGGER.debug("Detected light %s", entity_id)
             if await _async_get_superlight_id(entity) is None:
-                devices.append(Superlight(hass, id))
+                devices.append(entity_id)
             else:
-                _LOGGER.debug("Light %s already has superlight", id)
+                _LOGGER.debug("Light %s already has superlight", entity_id)
 
     return devices
 
@@ -234,22 +229,17 @@ async def async_setup(hass: HomeAssistant, hass_config: ConfigType) -> bool:
     async def _async_discovery(evt: Event) -> None:
         entity_id = None
         should_trigger_discovery = False
-        removing = False
-        if evt.event_type == er.EVENT_ENTITY_REGISTRY_UPDATED:
-            if evt.data.get("action") == "create":
-                should_trigger_discovery = True
-                entity_id = evt.data.get("entity_id")
-            elif evt.data.get("action") == "remove":
-                should_trigger_discovery = True
-                entity_id = evt.data.get("entity_id")
-                removing = True
+        if (
+            evt.event_type == er.EVENT_ENTITY_REGISTRY_UPDATED
+            and evt.data.get("action") == "create"
+        ):
+            should_trigger_discovery = True
+            entity_id = evt.data.get("entity_id")
         elif evt.event_type == EVENT_HOMEASSISTANT_STARTED:
             should_trigger_discovery = True
 
         if should_trigger_discovery:
-            async_trigger_discovery(
-                hass, await async_discover_devices(hass, entity_id, removing)
-            )
+            async_trigger_discovery(hass, await async_discover_devices(hass, entity_id))
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _async_discovery)
     hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _async_discovery)
